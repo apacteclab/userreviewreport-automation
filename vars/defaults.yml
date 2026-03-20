@@ -1,0 +1,32 @@
+rhel_report: "/tmp/rhel_server_report.csv"
+rhel_report_tmp: "/tmp/rhel_server_report_tmp.csv"
+win_report: "/tmp/win_server_report.csv"
+win_report_tmp: "/tmp/win_server_report_tmp.csv"
+sql_report: "/tmp/sql_server_report.csv"
+sql_report_tmp: "/tmp/sql_server_report_tmp.csv"
+#user_audit_report: '/tmp/[SEWPlus]Privileged_Accounts_Review_Report_{{ ansible_date_time.iso8601_basic_short }}.xlsx'
+user_audit_report_UAR_rhel: '/tmp/[SEWPlus]UAR_Report_Linux_{{ ansible_date_time.iso8601_basic_short }}.xlsx'
+user_audit_report_UAR_win: '/tmp/[SEWPlus]UAR_Report_Windows_{{ ansible_date_time.iso8601_basic_short }}.xlsx'
+user_audit_report_UAR_sql: '/tmp/[SEWPlus]UAR_Report_MSSQL_{{ ansible_date_time.iso8601_basic_short }}.xlsx'
+app_report_jboss: "/tmp/[SEWPlus]UAR_Report_JBoss_{{ ansible_date_time.iso8601_basic_short }}.xlsx"
+app_report_sewplus: "/tmp/[SEWPlus]UAR_Report_SEWPlus_{{ ansible_date_time.iso8601_basic_short }}.xlsx"
+app_report_sitecore: "/tmp/[SEWPlus]UAR_Report_Sitecore_{{ ansible_date_time.iso8601_basic_short }}.xlsx"
+# user_audit_report_dc: '/home/lfadmin/audit_report'
+user_audit_report_dc: '/opt/audit_report'
+enable_rhel_report: false
+enable_win_report: false
+enable_sql_report: false
+sql_databases:
+  - sge_Core
+  - sge_ExperienceForms
+  - sge_Master
+  - sge_Web
+  - sgenergy
+  - sge_Sessions
+  - emc_lcd
+mssql_script_name: "mssql_script.sql"
+send_email: false
+email_host: ''
+email_port: ''
+email_from: ''
+email_to: ''

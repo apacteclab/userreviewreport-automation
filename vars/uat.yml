@@ -1,0 +1,4 @@
+environment: uat
+target_host: "10.1.157.223"
+mssql_server: 10.1.159.221
+mssql_port: 1437
