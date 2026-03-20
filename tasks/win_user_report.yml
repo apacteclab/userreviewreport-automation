@@ -1,0 +1,46 @@
+---
+- name: Windows | Get all groups
+  win_shell: |
+    Get-LocalGroup | Select-Object Name | ConvertTo-Json -Depth 1
+  register: all_groups
+
+- name: Windows | Get members of each group
+  win_shell: |
+    $excluded = @('DefaultAccount', 'Guest','WDAGUtilityAccount')
+    $results = @()
+    Get-LocalGroup | ForEach-Object {
+      $groupMembers = Get-LocalGroupMember -Group $_.Name 
+      foreach ($member in $groupMembers) {
+        $results += [PSCustomObject]@{
+          User   = $member.Name
+          Domain = $member.PrincipalSource
+          Group  = $_.Name
+        }
+      }
+    }
+    $results | ConvertTo-Json -Depth 3 -Compress
+  register: group_members
+
+- name: Windows | debug user report
+  debug:
+    msg: "{{ lookup('template', 'templates/win_user_report.j2') }}"
+  delegate_to: localhost
+
+- name: Windows | Generate win temp Report
+  template:
+    src: templates/win_user_report.j2
+    dest: "/tmp/{{ inventory_hostname }}_win.csv"
+  # vars:
+  #   users_list: "{{ group_members.stdout }}"
+  delegate_to: localhost
+
+- name: Windows | Append to main file
+  shell: "cat /tmp/{{ inventory_hostname }}_win.csv >> {{ win_report_tmp }}"
+  delegate_to: localhost
+
+- name: Windows | Remove the host temp file
+  file:
+    path: "/tmp/{{ inventory_hostname }}_win.csv"
+    state: absent
+  delegate_to: localhost
+  run_once: true

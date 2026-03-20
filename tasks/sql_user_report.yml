@@ -1,0 +1,114 @@
+- name: SQL | Create temporary directory at C:\
+  win_file:
+    path: 'C:\Temp'
+    state: directory
+
+- name: SQL | Create mssql script file
+  win_file:
+    path: 'C:\Temp\{{ mssql_script_name }}'
+    state: touch
+
+# - name: SQL | Copy mssql script content to file
+#   win_shell: |
+#     $content = "SET NOCOUNT ON;
+#     SELECT
+#         DB_NAME() AS DatabaseName,
+#         dp.name AS Username,
+#         CAST(STRING_AGG(r.name, ', ') AS VARCHAR(MAX)) AS Roles
+#     FROM
+#         sys.database_principals dp
+#     LEFT JOIN
+#         sys.database_role_members rm ON dp.principal_id = rm.member_principal_id
+#     LEFT JOIN
+#         sys.database_principals r ON rm.role_principal_id = r.principal_id
+#     WHERE
+#         dp.type IN ('S', 'U', 'G', 'R', 'A')  -- SQL users, Windows users, groups, DB roles, Application roles
+#         -- AND dp.principal_id > 4
+#     GROUP BY
+#         dp.name;"
+#     Set-Content -Path "C:\Temp\{{ mssql_script_name }}" -Value $content
+#   args:
+#     executable: powershell
+
+- name: SQL | Copy mssql script content to file
+  win_shell: |
+    $content = "SET NOCOUNT ON;
+    SELECT
+        DB_NAME() AS DatabaseName,
+        COALESCE(dp.name, 'Not mapped') AS DatabaseUser,
+        COALESCE(STRING_AGG(r.name, ', '), 'No roles') AS Roles,
+        sp.name AS ServerLogin,
+        COALESCE(STRING_AGG(sr.name, ', '), 'No server roles') AS ServerRoles
+    FROM sys.server_principals sp
+    LEFT JOIN sys.database_principals dp
+        ON sp.sid = dp.sid
+    LEFT JOIN sys.database_role_members rm
+        ON dp.principal_id = rm.member_principal_id
+    LEFT JOIN sys.database_principals r
+        ON rm.role_principal_id = r.principal_id
+    LEFT JOIN sys.server_role_members srm
+        ON sp.principal_id = srm.member_principal_id
+    LEFT JOIN sys.server_principals sr
+        ON srm.role_principal_id = sr.principal_id
+    WHERE
+        sp.type IN ('S','U','G')      -- SQL, Windows users, groups
+    AND sp.principal_id > 4           -- exclude system logins like sa=1
+    GROUP BY
+        dp.name, sp.name;"
+    Set-Content -Path "C:\Temp\{{ mssql_script_name }}" -Value $content
+  args:
+    executable: powershell
+
+- name: SQL | Run SQL query
+  win_shell: |
+    $rawOutput = sqlcmd -E -S {{ mssql_server }},{{ mssql_port }} -i C:\Temp\{{ mssql_script_name }} -d {{ item }} -W -h -1 -s ";"
+    $jsonArray = @()
+    foreach ($line in $rawOutput) {
+        $columns = $line -split ";"
+        $jsonObject = @{
+            DatabaseName = $columns[0]
+            Username = $columns[1]
+            Roles = $columns[2]
+            ServerLogin = $columns[3]
+            ServerRoles = $columns[4]
+        }
+        $jsonArray += $jsonObject
+    }
+    $jsonArray | ConvertTo-Json
+  args:
+    executable: powershell
+  loop: "{{ sql_databases }}"
+  register: query_results
+
+- name: DEBUG | Raw SQL stdout
+  debug:
+    var: query_results.results
+
+- name: SQL | Set fact
+  set_fact:
+    sql_rows: "{{ sql_rows | default([]) + (item.stdout | from_json) }}"
+  loop: "{{ query_results.results }}"
+  when:
+    - item.stdout is defined
+    - item.stdout | length > 0
+
+- name: SQL | Display report formated
+  debug:
+    msg: "{{ lookup('template', 'templates/sql_user_report.j2') }}"
+
+- name: SQL | Generate sql temp Report
+  template:
+    src: templates/sql_user_report.j2
+    dest: "/tmp/{{ inventory_hostname }}_sql.csv"
+  delegate_to: localhost
+
+- name: SQL | Append to main file
+  shell: "cat /tmp/{{ inventory_hostname }}_sql.csv >> {{ sql_report_tmp }}"
+  delegate_to: localhost
+
+- name: SQL | Remove the host temp file
+  file:
+    path: "/tmp/{{ inventory_hostname }}_sql.csv"
+    state: absent
+  delegate_to: localhost
+  run_once: true

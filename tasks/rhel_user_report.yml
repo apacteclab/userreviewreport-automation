@@ -1,0 +1,44 @@
+---
+- name: RHEL | Get all users with login access
+  # shell: |
+  #   grep -v "nologin\|shutdown\|sync\|halt" /etc/passwd | cut -d: -f1
+  shell: "cut -d: -f1 /etc/passwd"
+  become: true
+  register: all_users
+
+- name: RHEL | Get groups for each user
+  shell: "id -Gn {{ item }}"
+  register: user_groups_raw
+  loop: "{{ all_users.stdout_lines }}"
+  become: true
+
+- name: RHEL | Build user → group mapping
+  set_fact:
+    user_groups: >-
+      {{
+        user_groups_raw.results
+        | items2dict(key_name='item', value_name='stdout')
+      }}
+
+- name: RHEL | debug rhel report
+  debug:
+    msg: "{{ lookup('template', 'templates/rhel_user_report.j2')}}"
+
+- name: RHEL | Generate CSV using Jinja template
+  template:
+    src: templates/rhel_user_report.j2
+    dest: "/tmp/{{ inventory_hostname }}-temp.csv"
+  vars:
+    users_list: "{{ all_users.stdout_lines }}"
+    # groups_list: "{{ groups_output.stdout_lines }}"
+  delegate_to: localhost
+
+- name: RHEL | Append to main file
+  shell: "cat /tmp/{{ inventory_hostname }}-temp.csv >> {{ rhel_report_tmp }}"
+  delegate_to: localhost
+
+- name: RHEL | remove the temp file
+  file:
+    path: "/tmp/{{ inventory_hostname }}-temp.csv"
+    state: absent
+  delegate_to: localhost
