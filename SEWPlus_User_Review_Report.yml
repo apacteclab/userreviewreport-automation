@@ -1,0 +1,302 @@
+---
+- name: SEWPLUS Report
+  hosts: eap-dc
+  gather_facts: false
+  vars_files:
+    - vars/defaults.yml
+    - vars/vaults.yml
+  vars:
+    enable_sewplus_report: true
+    sewplus_url: "https://www.dev.sewplus.emcsg.com/usermanagement-ext/userAccessMatrix/listUser"
+    sewplus_report: "/tmp/sewplus_report.csv"
+    enable_sitecore_report: true
+    sitecore_url: "https://www.dev.sewplus.emcsg.com/usermanagement-ext/userAccessMatrix/listSitecoreUser"
+    sitecore_report: "/tmp/sitecore_report.csv"
+    enable_jboss_report: true
+    jboss_user_config: "/app/jboss-eap-sgenergy/domain/configuration/mgmt-users.properties"
+    jboss_report: "/tmp/jboss_report.csv"
+    app_report_jboss: "/tmp/[SEWPlus]UAR_Report_JBoss_{{ ansible_date_time.iso8601_basic_short }}.xlsx" 
+    app_report_sewplus: "/tmp/[SEWPlus]UAR_Report_SEWPlus_{{ ansible_date_time.iso8601_basic_short }}.xlsx"    
+    # app_report_sitecore: "/tmp/[SEWPlus]UAR_Report_Sitecore_{{ ansible_date_time.iso8601_basic_short }}.xlsx"  
+    app_report_sitecore: "/tmp/[SEWPlus]UAR_Report_Sitecore_{{ report_timestamp }}.xlsx"
+    send_email: false
+    email_host: ''
+    email_port: ''
+    email_from: ''
+    email_to: ''
+
+  pre_tasks:
+    - name: Set constant timestamp
+      set_fact:
+        report_timestamp: "{{ lookup('pipe', 'date +%Y%m%dT%H%M%S') }}"
+      run_once: true
+
+    - name: PRE | Find leftover App Excel reports from failed runs
+      find:
+        paths: /tmp
+        patterns: 
+          - "[SEWPlus]UAR_Report_SEWPlus_*.xlsx"
+          - "[SEWPlus]UAR_Report_Sitecore_*.xlsx"
+          - "[SEWPlus]UAR_Report_JBoss_*.xlsx"
+        file_type: file
+      delegate_to: localhost
+      register: old_app_reports
+      run_once: true
+
+    - name: PRE | Delete leftover App reports
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_app_reports.files }}"
+      delegate_to: localhost
+      run_once: true
+      
+    - name: PRE | remove the previous temp file
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "{{ sewplus_report }}"
+        - "{{ sitecore_report }}"
+        - "{{ jboss_report }}"
+        - "/tmp/app_csv2excel.py"
+      delegate_to: localhost
+      run_once: true
+
+  tasks:
+    - name: Pre | End if all reports are disabled
+      block:
+        - name: Check and end playbook
+          debug:
+            msg: "All reports are disabled. Stopping execution."
+        - meta: end_play
+      when: 
+        - enable_sewplus_report | bool == false
+        - enable_sitecore_report | bool == false
+        - enable_jboss_report | bool == false
+
+    - name: Pre | Get minimal facts
+      setup:
+        gather_subset: min
+      delegate_to: localhost
+    
+    # SEWPlus Report
+    - name: SEWPlus | Get return of SEWPLUS info
+      uri:
+        url: "{{ sewplus_url }}"
+        method: GET
+        headers:
+          X-API-Key: "{{ sewplus_x_api_key }}"
+          Accept: "application/json"
+        validate_certs: false
+        status_code: 200
+        timeout: 60
+      register: sewplus_info
+      #no_log: true
+      # delegate_to: localhost
+      when: enable_sewplus_report | bool
+    
+    # - name: SEWPlus | debug
+    #   debug:
+    #     # msg: "{{ lookup('template', 'templates/sewplus_report.j2') }}"
+    #     msg: "{{ sewplus_info.json }}"
+    #   delegate_to: localhost
+    #   when: enable_sewplus_report | bool
+
+    - name: SEWPlus | Create sewplus report csv
+      template:
+        src: templates/sewplus_report.j2
+        dest: "{{ sewplus_report }}"
+      delegate_to: localhost
+      when: enable_sewplus_report | bool
+
+    # Sitecore Report
+    - name: Sitecore | Get return of Sitecore info
+      uri:
+        url: "{{ sitecore_url }}"
+        method: GET
+        headers:
+          X-API-Key: "{{ sitecore_x_api_key }}"
+          Accept: "application/json"
+        validate_certs: false
+        status_code: 200
+        timeout: 60
+      register: sitecore_info
+      no_log: false
+      delegate_to: localhost
+      when: enable_sitecore_report | bool
+
+    - name: Sitecore | debug
+      debug:
+        msg: "{{ sitecore_info.json }}"
+      delegate_to: localhost
+      when: enable_sitecore_report | bool
+    
+    - name: SITECORE | Create sitecore report csv
+      template:
+        src: templates/sitecore_report.j2
+        dest: "{{ sitecore_report }}"
+      delegate_to: localhost
+      when: enable_sitecore_report | bool
+
+    # JBOSS Report
+    - name: JBOSS | Read JBoss users from properties file
+      slurp:
+        src: "{{ jboss_user_config }}"
+      register: jboss_users
+      become: yes
+      become_user: root
+      when: enable_jboss_report | bool
+
+    - name: JBOSS | debug
+      debug:
+        msg: "{{ jboss_users }}"
+      delegate_to: localhost
+      when: enable_jboss_report | bool
+
+    - name: JBOSS | Extract usernames
+      set_fact:
+        jboss_usernames: "{{ jboss_users['content'] | b64decode | regex_findall('^(?!#)([^=]+)=', multiline=True) }}"
+      when: enable_jboss_report | bool
+
+    - name: JBOSS | Create jboss report csv
+      template:
+        src: templates/jboss_report.j2
+        dest: "{{ jboss_report }}"
+      delegate_to: localhost
+      when: enable_jboss_report | bool
+
+  post_tasks:
+    - name: POST | Create python script to generate xlsx file
+      ansible.builtin.template:
+        src: templates/ur_individual_csv2excel.py.j2
+        dest: "/tmp/app_csv2excel.py"
+      delegate_to: localhost
+      # connection: local
+      run_once: true
+
+    - name: POST | Run Python script
+      shell: "/usr/bin/python3 /tmp/app_csv2excel.py"
+      delegate_to: localhost
+      # connection: local
+      run_once: true
+
+# Update for changes to store on other location
+    # - name: POST | upload to jboss domain controller
+    #   copy:
+    #     src: "{{ app_report }}"
+    #     dest: "/home/lfadmin/audit_report"
+    #     mode: 0644
+    #   run_once: true
+
+    - name: POST | Find JBoss report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_JBoss_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: jboss_reports
+      delegate_to: localhost
+      run_once: true
+
+    - name: Find SEWPlus report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_SEWPlus_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: sewplus_reports
+      delegate_to: localhost
+      run_once: true
+
+    - name: Find Sitecore report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_Sitecore_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: sitecore_reports
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set report_files fact dynamically
+      set_fact:
+        report_files: >-
+          {{
+            [
+              { "name": "jboss", "src": (jboss_reports.files[0].path if jboss_reports.files | length > 0 else '') },
+              { "name": "sewplus",  "src": (sewplus_reports.files[0].path if sewplus_reports.files | length > 0 else '') },
+              { "name": "sitecore",  "src": (sitecore_reports.files[0].path if sitecore_reports.files | length > 0 else '') }
+            ]
+          }}
+      when: jboss_reports is defined and sewplus_reports is defined and sitecore_reports is defined
+      run_once: true
+
+    - name: POST | upload multiple files to jboss domain controller
+      copy:
+        src: "{{ item.path }}"
+        # dest: "/home/lfadmin/audit_report"
+        dest: "/opt/audit_report"
+        mode: 0644
+      loop: "{{ jboss_reports.files + sewplus_reports.files + sitecore_reports.files }}"
+      run_once: true
+      become: true
+
+    # - name: "REPORT | Email report"
+    #   mail:
+    #     host: "{{email_host}}"
+    #     port: "{{email_port}}"
+    #     from: "{{email_from}}"
+    #     to: "{{ email_to }}"
+    #     subject: 'SEWPlus User Review Report Generated by Ansible'
+    #     body: "Please find all the report in the attachment"
+    #     subtype: html
+    #     attach:
+    #       - "{{ app_report }}"
+    #   delegate_to: localhost
+    #   run_once: true
+    #   when: send_email | bool
+
+    - name: Build email attachment list
+      set_fact:
+        email_attachments: >-
+          {{
+            ([jboss_reports.files] if enable_jboss_report | bool else [])
+            + ([sewplus_reports.files] if enable_sewplus_report | bool else [])
+            + ([sitecore_reports.files] if enable_sitecore_report | bool else [])
+          }}
+
+    - name: "REPORT | Email report"
+      mail:
+        host: "{{ email_host }}"
+        port: "{{ email_port }}"
+        from: "{{ email_from }}"
+        to: "{{ email_to }}"
+        subject: 'SEWPlus User Review Report Generated by Ansible'
+        body: "Please find the report(s) attached."
+        subtype: html
+        attach:
+          - "{{ email_attachments }}"
+      delegate_to: localhost
+      run_once: true
+      when: send_email | bool
+
+    - name: POST | remove the temp file
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "{{ sewplus_report }}"
+        - "{{ sitecore_report }}"
+        - "{{ jboss_report }}"
+        - "/tmp/app_csv2excel.py"
+      delegate_to: localhost
+      run_once: true
+
+    - name: POST | Remove all found excel report files
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ jboss_reports.files + sewplus_reports.files + sitecore_reports.files }}"
+      delegate_to: localhost
+      run_once: true    

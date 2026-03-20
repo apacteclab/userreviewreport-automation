@@ -1,0 +1,78 @@
+---
+- name: SGEnergy UAR Report Upload
+  hosts: "{{ target_host }}"  
+    # - 10.2.22.23    #LB
+    # - 10.1.156.193  #DEV
+    # - 10.1.157.223  #UAT
+  gather_facts: false
+  vars_files:
+    - vars/defaults.yml
+    - vars/{{ environment }}.yml
+
+  tasks:
+    - name: Find RHEL report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_Linux_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: rhel_reports
+      delegate_to: localhost
+      run_once: true
+
+    - name: Find Windows report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_Windows_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: win_reports
+      delegate_to: localhost
+      run_once: true
+
+    - name: Find SQL report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_MSSQL_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: sql_reports
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set report_files fact dynamically
+      set_fact:
+        report_files: >-
+          {{
+            [
+              { "name": "rhel", "src": (rhel_reports.files[0].path if rhel_reports.files | length > 0 else '') },
+              { "name": "win",  "src": (win_reports.files[0].path if win_reports.files | length > 0 else '') },
+              { "name": "sql",  "src": (sql_reports.files[0].path if sql_reports.files | length > 0 else '') }
+            ]
+          }}
+      when: rhel_reports is defined and win_reports is defined and sql_reports is defined
+      run_once: true
+
+    - name: Gather only ansible_date_time
+      setup:
+        filter: "ansible_date_time"
+
+    - name: Upload all report files (RHEL, Windows, SQL)
+      copy:
+        src: "{{ item.path }}"
+        dest: "{{ user_audit_report_dc }}"
+        mode: 0644
+      loop: "{{ rhel_reports.files + win_reports.files + sql_reports.files }}"
+      # delegate_to: 10.2.22.23 #LB
+      # delegate_to: 10.1.156.193 #DEV
+      # delegate_to: 10.1.157.223 #UAT
+      delegate_to: "{{ target_host }}"
+      run_once: true
+
+    # - name: Remove all found report files
+    #   file:
+    #     path: "{{ item.path }}"
+    #     state: absent
+    #   loop: "{{ rhel_reports.files + win_reports.files + sql_reports.files }}"
+    #   delegate_to: localhost
+    #   run_once: true

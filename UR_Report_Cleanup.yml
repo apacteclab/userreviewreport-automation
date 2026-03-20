@@ -1,0 +1,61 @@
+---
+- name: SGEnergy UAR Report Cleanup
+  hosts:
+    - localhost
+  gather_facts: false
+
+  tasks:
+    - name: Find JBoss report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_JBoss_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: jboss_reports
+      # delegate_to: localhost
+      run_once: true
+
+    - name: Find SEWPlus report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_SEWPlus_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: sewplus_reports
+      # delegate_to: localhost
+      run_once: true
+
+    - name: Find Sitecore report files using regex
+      find:
+        paths: /tmp
+        patterns: "\\[SEWPlus\\]UAR_Report_Sitecore_.*\\.xlsx"
+        use_regex: true
+        file_type: file
+      register: sitecore_reports
+      # delegate_to: localhost
+      run_once: true
+
+    - name: Set report_files fact dynamically
+      set_fact:
+        report_files: >-
+          {{
+            [
+              { "name": "jboss", "src": (jboss_reports.files[0].path if jboss_reports.files | length > 0 else '') },
+              { "name": "sewplus",  "src": (sewplus_reports.files[0].path if sewplus_reports.files | length > 0 else '') },
+              { "name": "sitecore",  "src": (sitecore_reports.files[0].path if sitecore_reports.files | length > 0 else '') }
+            ]
+          }}
+      when: jboss_reports is defined and sewplus_reports is defined and sitecore_reports is defined
+      run_once: true
+
+    - name: Gather only ansible_date_time
+      setup:
+        filter: "ansible_date_time"
+
+    - name: Remove all found report files
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ jboss_reports.files + sewplus_reports.files + sitecore_reports.files }}"
+      # delegate_to: localhost
+      run_once: true        
