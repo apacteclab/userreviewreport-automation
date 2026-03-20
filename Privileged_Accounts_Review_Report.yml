@@ -1,0 +1,220 @@
+---
+- name: SGEnergy User Audit Report
+  hosts: all
+  vars_files:
+    - vars/defaults.yml
+    - vars/{{ environment }}.yml
+  pre_tasks:
+  - name: Pre | End if all reports are disabled
+    block:
+      - name: Check and end playbook
+        debug:
+          msg: "All reports are disabled. Stopping execution."
+      - meta: end_play
+    when:
+      - enable_rhel_report | bool == false
+      - enable_win_report | bool == false
+      - enable_sql_report | bool == false
+
+  - name: PRE | Find leftover Excel reports from failed runs
+    find:
+      paths: /tmp
+      patterns: 
+        - "[SEWPlus]UAR_Report_Linux_*.xlsx"
+        - "[SEWPlus]UAR_Report_Windows_*.xlsx"
+        - "[SEWPlus]UAR_Report_MSSQL_*.xlsx"
+      file_type: file
+    delegate_to: localhost
+    register: old_reports
+    run_once: true
+
+  - name: PRE | Delete leftover Excel reports
+    file:
+      path: "{{ item.path }}"
+      state: absent
+    loop: "{{ old_reports.files }}"
+    delegate_to: localhost
+    run_once: true
+
+  - name: PRE | remove if there is temp file
+    file:
+      path: "{{ item }}"
+      state: absent
+    with_items:
+      - "{{ rhel_report }}"
+      - "{{ rhel_report_tmp }}"
+      - "{{ win_report }}"
+      - "{{ win_report_tmp }}"
+      - "{{ sql_report }}"
+      - "{{ sql_report_tmp }}"
+      # - "{{ user_audit_report }}"
+      - "/tmp/UAR_individual_excel.py"
+    delegate_to: localhost
+    run_once: true
+
+  - name: PRE | Create a new csv file
+    file:
+      path: "{{ item }}"
+      state: touch
+    delegate_to: localhost
+    run_once: true
+    with_items:
+      - "{{ rhel_report }}"
+      - "{{ rhel_report_tmp }}"
+      - "{{ win_report }}"
+      - "{{ win_report_tmp }}"
+      - "{{ sql_report }}"
+      - "{{ sql_report_tmp }}"
+  tasks:
+  - name: RHEL | Run for rhel server
+    include_tasks:
+      file: tasks/rhel_user_report.yml
+    when:
+      - ansible_distribution == 'RedHat'
+      - enable_rhel_report | bool
+
+  - name: WINDOWS | Run for windows  server
+    include_tasks:
+      file: tasks/win_user_report.yml
+    when:
+      # - ansible_os_family == 'Windows'
+      - ansible_facts['os_family'] == 'Windows'
+      - enable_win_report | bool
+
+  - name: SQL | Run for SQL Windows  server
+    include_tasks:
+      file: tasks/sql_user_report.yml
+    when:
+      - inventory_hostname in groups["SQL"]
+      - enable_sql_report | bool
+
+  post_tasks:
+  - name: POST | RHEL | generate RHEL report in csv
+    copy:
+      content: |
+        No., Server Name , Username , Groups , Remarks
+        {% for line in lookup('file', '{{ rhel_report_tmp }}').splitlines() %}
+        {{ loop.index }},{{ line }}
+        {% endfor %}
+      dest: "{{ rhel_report }}"
+    when:
+      - enable_rhel_report | bool
+    delegate_to: localhost
+    run_once: true
+
+  - name: POST | WINDOWS | generate WINDOWS report in csv
+    copy:
+      content: |
+        No., Server Name , Username , Role , Remarks
+        {% for line in lookup('file', '{{ win_report_tmp }}').splitlines() %}
+        {{ loop.index }},{{ line }}
+        {% endfor %}
+      dest: "{{ win_report }}"
+    when:
+      - enable_win_report | bool
+    delegate_to: localhost
+    run_once: true
+
+  - name: POST | SQL | generate SQL report in csv
+    copy:
+      content: |
+        No., Server Name (Instance), Database Name, DatabaseUser, Roles, Server Login, Server Roles, Remarks
+        {% for line in lookup('file', '{{ sql_report_tmp }}').splitlines() %}
+        {{ loop.index }},{{ line }}
+        {% endfor %}
+      dest: "{{ sql_report }}"
+    when:
+      - enable_sql_report | bool
+    delegate_to: localhost
+    run_once: true
+
+  - name: POST | Create python script to generate xlsx file
+    template:
+      src: templates/UAR_individual_excel.py.j2
+      dest: "/tmp/UAR_individual_excel.py"
+    delegate_to: localhost
+    run_once: true
+
+  - name: POST | Run Python script
+    shell: /usr/bin/python3 /tmp/UAR_individual_excel.py
+    delegate_to: localhost
+    run_once: true
+
+# Required to change to the upload directory
+  # - name: POST | upload to jboss domain controller
+  #   copy:
+  #     src: "{{ user_audit_report }}"
+  #     dest: "{{ user_audit_report_dc }}"
+  #     mode: 0644
+  #   delegate_to: 10.1.156.193
+  #   run_once: true
+
+# Required to change to the upload directory
+# edited on 20250414 by AM
+  # - name: POST | upload multiple files to jboss domain controller
+  #   copy:
+  #     src: "{{ item.src }}"
+  #     dest: "{{ item.dest }}"
+  #     mode: 0644
+  #   loop:
+  #     - { src: "{{ user_audit_report_UAR_rhel }}", dest: "{{ user_audit_report_dc }}", enabled: "{{ enable_rhel_report | bool }}" }
+  #     - { src: "{{ user_audit_report_UAR_win }}", dest: "{{ user_audit_report_dc }}", enabled: "{{ enable_win_report | bool }}" }
+  #     - { src: "{{ user_audit_report_UAR_sql }}", dest: "{{ user_audit_report_dc }}", enabled: "{{ enable_sql_report | bool }}" }
+  #   when: item.enabled            # edited on 20250414 by AM
+  #   delegate_to: 10.1.156.193
+  #   run_once: true
+
+  # - name: "REPORT | Email report"
+  #   mail:
+  #     host: "{{email_host}}"
+  #     port: "{{email_port}}"
+  #     from: "{{email_from}}"
+  #     to: "{{ email_to }}"
+  #     subject: 'Privilege Accounts Review Report Generated by Ansible'
+  #     body: "Please find the report in the attachment"
+  #     subtype: html
+  #     attach:
+  #       - "{{ user_audit_report }}"
+  #   delegate_to: localhost
+  #   run_once: true
+  #   when: send_email | bool
+
+  # - name: Build email attachment list
+  #   set_fact:
+  #     email_attachments: >-
+  #       {{
+  #         ([user_audit_report_UAR_rhel] if enable_rhel_report | bool else [])
+  #         + ([user_audit_report_UAR_win] if enable_win_report | bool else [])
+  #         + ([user_audit_report_UAR_sql] if enable_sql_report | bool else [])
+  #       }}
+
+  # - name: "REPORT | Email report"
+  #   mail:
+  #     host: "{{ email_host }}"
+  #     port: "{{ email_port }}"
+  #     from: "{{ email_from }}"
+  #     to: "{{ email_to }}"
+  #     subject: 'Privilege Accounts Review Report Generated by Ansible'
+  #     body: "Please find the report in the attachment"
+  #     subtype: html
+  #     attach:
+  #       - "{{ email_attachments }}"
+  #   delegate_to: localhost
+  #   run_once: true
+  #   when: send_email | bool
+
+  - name: POST | remove the temp file
+    file:
+      path: "{{ item }}"
+      state: absent
+    with_items:
+      - "{{ rhel_report }}"
+      - "{{ rhel_report_tmp }}"
+      - "{{ win_report }}"
+      - "{{ win_report_tmp }}"
+      - "{{ sql_report }}"
+      - "{{ sql_report_tmp }}"
+      # - "{{ user_audit_report }}"
+      - "/tmp/UAR_individual_excel.py"
+    delegate_to: localhost
+    run_once: true
