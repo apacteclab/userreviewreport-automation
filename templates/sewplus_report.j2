@@ -1,0 +1,31 @@
+{% set row1 = [] -%}
+{% set row2 = [] -%}
+{% set ns = namespace(datarow=[]) %}
+{% set rowspan_headers = [] %}
+{% for header in sewplus_info.json.headers -%}
+{% set col_count = header.colspan if 'colspan' in header else 1 -%}
+{% for i in range(col_count) -%}
+{% if i == 0 -%}
+{% set _ = row1.append(header.name) -%}
+{% else -%}
+{% set _ = row1.append('') -%} {# Empty cells for colspan #}
+{% endif -%}
+{% if 'rowspan' in header -%}
+{% set _ = rowspan_headers.append(header.name) -%}
+{% set _ = row2.append('') -%}
+{% endif -%}
+{% endfor -%}
+{% endfor -%}
+{% for sub_header in sewplus_info.json.sub_headers -%}
+{% set _ = row2.append(sub_header.name) -%}
+{% set _ = rowspan_headers.append(sub_header.name) -%}
+{% endfor -%}
+{{ row1 | join(',')}}
+{{ row2 | join(',')}}
+{% for line in sewplus_info.json.data %}
+{% for header in rowspan_headers -%}
+{% set _ = ns.datarow.append(line[header]) -%}
+{% endfor -%}
+{{ ns.datarow | join(',') }}
+{% set ns.datarow = [] -%}
+{% endfor%}

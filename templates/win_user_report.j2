@@ -1,0 +1,8 @@
+{% for line in group_members.stdout | from_json %}
+{% set username = line.User.split('\\')[1] %}
+{% set domain = line.User.split('\\')[0] %}
+{% set excluded_users = ['nkaaitfgdsyicmqfovcs', 'tijpfbudeajfnlqavvwc', 'DefaultAccount', 'Domain Users'] %}
+{% if domain != 'NT AUTHORITY' and domain != 'NT SERVICE' and username not in excluded_users -%}
+{{ inventory_hostname }},{{ username }},{{ domain }},{{ line.Group }}
+{% endif -%}
+{% endfor %}

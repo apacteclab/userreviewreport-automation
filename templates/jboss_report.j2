@@ -1,0 +1,4 @@
+No.,Server Name,Username,Remarks
+{% for line in jboss_usernames %}
+{{ loop.index }},{{ inventory_hostname }},{{ line }},
+{% endfor %}

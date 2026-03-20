@@ -1,0 +1,14 @@
+import pandas as pd
+
+{% if enable_rhel_report | bool %}
+with pd.ExcelWriter('{{ user_audit_report_UAR_rhel }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ rhel_report }}').to_excel(writer, sheet_name='RHEL User Accouts', index=False)
+{% endif %}
+{% if enable_win_report | bool %}
+with pd.ExcelWriter('{{ user_audit_report_UAR_win }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ win_report }}').to_excel(writer, sheet_name='WINDOWS User Accouts', index=False)
+{% endif %}
+{% if enable_sql_report | bool %}
+with pd.ExcelWriter('{{ user_audit_report_UAR_sql }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ sql_report }}').to_excel(writer, sheet_name='SQL User Accounts', index=False)
+{% endif %}

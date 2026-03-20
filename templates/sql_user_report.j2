@@ -1,0 +1,5 @@
+{% if sql_rows is defined and sql_rows | length > 0 %}
+{% for result in sql_rows %}
+{{ inventory_hostname }},{{ result.DatabaseName }},{{ result.Username }},{{ result.Roles | replace(",",";") }},{{ result.ServerLogin }},{{ result.ServerRoles }}
+{% endfor %}
+{% endif %}

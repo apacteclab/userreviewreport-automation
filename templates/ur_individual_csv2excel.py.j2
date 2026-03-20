@@ -1,0 +1,37 @@
+import pandas as pd
+from pandas.io.formats import excel
+from openpyxl import load_workbook
+
+excel.ExcelFormatter.header_style = None
+
+{% if enable_sewplus_report %}
+with pd.ExcelWriter('{{ app_report_sewplus }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ sewplus_report }}').to_excel(writer, sheet_name='SEWPlus', index=False)
+{% endif %}
+{% if enable_sitecore_report %}
+with pd.ExcelWriter('{{ app_report_sitecore }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ sitecore_report }}').to_excel(writer, sheet_name='Sitecore', index=False)
+{% endif %}
+{% if enable_jboss_report %}
+with pd.ExcelWriter('{{ app_report_jboss }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ jboss_report }}').to_excel(writer, sheet_name='JBoss', index=False)
+{% endif %}
+{% if enable_sewplus_report %}
+wb = load_workbook('{{ app_report_sewplus }}')
+ws = wb['SEWPlus']
+# Merge header cells for SEWPlus
+{% set start_column = namespace(value=1) -%}
+{% set end_column = namespace(value=1) -%}
+{% for header in sewplus_info.json.headers -%}
+{% set rowspan = header.rowspan | default(1) -%}
+{% set colspan = header.colspan | default(1) -%}
+# rowspan = {{ rowspan }} colspan = {{ colspan }}
+{% if loop.index != 1 %}
+{% set start_column.value = end_column.value + 1 -%}
+{% endif %}
+{% set end_column.value = start_column.value + colspan - 1 -%}
+ws.merge_cells(start_row=1, start_column={{ start_column.value }}, end_row={{ 1 + rowspan - 1 }}, end_column={{ end_column.value }})
+{% endfor -%}
+# Save the updated file
+wb.save('{{ app_report_sewplus }}')
+{% endif %}

@@ -1,0 +1,16 @@
+import pandas as pd
+
+{# excel.ExcelFormatter.header_style = None #}
+
+{% if enable_sewplus_report %}
+with pd.ExcelWriter('{{ app_report_sewplus }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ sewplus_report }}').to_excel(writer, sheet_name='SEWPlus', index=False)
+{% endif %}
+{% if enable_sitecore_report %}
+with pd.ExcelWriter('{{ app_report_sitecore }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ sitecore_report }}').to_excel(writer, sheet_name='Sitecore', index=False)
+{% endif %}
+{% if enable_jboss_report %}
+with pd.ExcelWriter('{{ app_report_jboss }}', engine='openpyxl') as writer:
+    pd.read_csv('{{ jboss_report }}').to_excel(writer, sheet_name='JBoss', index=False)
+{% endif %}

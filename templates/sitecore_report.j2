@@ -1,0 +1,24 @@
+{% set row1 = [] -%}
+{% set ns = namespace(datarow=[]) %}
+{% for header in sitecore_info.json.headers -%}
+{% set _ = row1.append(header.name) -%}
+{% endfor -%}
+{{ row1 | join(',')}}
+{% for line in sitecore_info.json.data -%}
+{% for header in row1 -%}
+{% if header == 'Roles' -%}
+    {% set raw_roles = line[header].split(';') if line[header] is string else line[header] %}
+    {% set cleaned_roles = raw_roles | map('regex_replace', '^sitecore\\\\', '') | list %}
+    {% set _ = ns.datarow.append(cleaned_roles | join('; ')) %}
+{% else -%}
+{% set _ = ns.datarow.append(line[header]) -%}
+{% endif -%}
+{% endfor -%}
+{{ ns.datarow
+  | map('regex_replace', '\"', '\"\"')
+  | map('regex_replace', '(.*)', '\"\\1\"')
+  | map('regex_replace', '^\"([0-9.]+)\"$', '\\1')
+  | join(',')
+}}
+{% set ns.datarow = [] -%}
+{% endfor%}

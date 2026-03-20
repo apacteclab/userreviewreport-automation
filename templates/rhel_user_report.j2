@@ -1,0 +1,4 @@
+{# Server Name, Username, Groups #}
+{% for username in all_users.stdout_lines %}
+{{ inventory_hostname }},{{ username }},"{{ (user_groups[username] | default('')).replace(' ', ', ') }}",
+{% endfor %}
