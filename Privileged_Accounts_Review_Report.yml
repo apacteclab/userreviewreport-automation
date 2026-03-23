@@ -81,7 +81,7 @@
       - ansible_facts['os_family'] == 'Windows'
       - enable_win_report | bool
 
-  - name: SQL | Run for SQL Windows  server
+  # - name: SQL | Run for SQL Windows  server
    # include_tasks:
    #   file: tasks/sql_user_report.yml
   #  when:
