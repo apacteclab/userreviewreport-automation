@@ -45,8 +45,8 @@
       - "{{ rhel_report_tmp }}"
       - "{{ win_report }}"
       - "{{ win_report_tmp }}"
-      - "{{ sql_report }}"
-      - "{{ sql_report_tmp }}"
+      # - "{{ sql_report }}"
+      # - "{{ sql_report_tmp }}"
       # - "{{ user_audit_report }}"
       - "/tmp/UAR_individual_excel.py"
     delegate_to: localhost
@@ -63,8 +63,8 @@
       - "{{ rhel_report_tmp }}"
       - "{{ win_report }}"
       - "{{ win_report_tmp }}"
-      - "{{ sql_report }}"
-      - "{{ sql_report_tmp }}"
+     # - "{{ sql_report }}"
+      # - "{{ sql_report_tmp }}"
   tasks:
   - name: RHEL | Run for rhel server
     include_tasks:
@@ -82,11 +82,11 @@
       - enable_win_report | bool
 
   - name: SQL | Run for SQL Windows  server
-    include_tasks:
-      file: tasks/sql_user_report.yml
-    when:
-      - inventory_hostname in groups["SQL"]
-      - enable_sql_report | bool
+   # include_tasks:
+   #   file: tasks/sql_user_report.yml
+  #  when:
+    #  - inventory_hostname in groups["SQL"]
+    #  - enable_sql_report | bool
 
   post_tasks:
   - name: POST | RHEL | generate RHEL report in csv
@@ -115,18 +115,18 @@
     delegate_to: localhost
     run_once: true
 
-  - name: POST | SQL | generate SQL report in csv
-    copy:
-      content: |
-        No., Server Name (Instance), Database Name, DatabaseUser, Roles, Server Login, Server Roles, Remarks
-        {% for line in lookup('file', '{{ sql_report_tmp }}').splitlines() %}
-        {{ loop.index }},{{ line }}
-        {% endfor %}
-      dest: "{{ sql_report }}"
-    when:
-      - enable_sql_report | bool
-    delegate_to: localhost
-    run_once: true
+ # - name: POST | SQL | generate SQL report in csv
+ #   copy:
+ #     content: |
+  #      No., Server Name (Instance), Database Name, DatabaseUser, Roles, Server Login, Server Roles, Remarks
+  #      {% for line in lookup('file', '{{ sql_report_tmp }}').splitlines() %}
+  #      {{ loop.index }},{{ line }}
+  #      {% endfor %}
+  #    dest: "{{ sql_report }}"
+  #  when:
+  #    - enable_sql_report | bool
+  #  delegate_to: localhost
+  #  run_once: true
 
   - name: POST | Create python script to generate xlsx file
     template:
@@ -212,8 +212,8 @@
       - "{{ rhel_report_tmp }}"
       - "{{ win_report }}"
       - "{{ win_report_tmp }}"
-      - "{{ sql_report }}"
-      - "{{ sql_report_tmp }}"
+      # - "{{ sql_report }}"
+      # - "{{ sql_report_tmp }}"
       # - "{{ user_audit_report }}"
       - "/tmp/UAR_individual_excel.py"
     delegate_to: localhost
